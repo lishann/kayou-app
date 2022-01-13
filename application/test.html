@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>WebSocket客户2</title>
+</head>
+
+<body>
+    <div class="content"></div>
+    <script src="__JS__/jquery-3.2.1.min.js"></script>
+    <script type="text/javascript">
+        var webSocket = null;
+        //初始化
+        initSocket();
+
+        function initSocket() {
+            if (!"WebSocket" in window) {
+                console.log("您的浏览器不支持 WebSocket!");
+                return;
+            }
+            //实例化websocket
+            webSocket = new WebSocket("ws://127.0.0.1:8283");
+            webSocket.onopen = handleSend;
+            webSocket.onmessage = handleMessage;
+            webSocket.onclose = handleClose;
+            webSocket.onerror = handleError;
+        }
+
+        // 向服务器端发送数据
+        function handleSend() {
+            // Web Socket 已连接上，使用 send() 方法发送数据
+            webSocket.send('大家好，这是一条广播');
+        }
+
+        // 处理服务器端发送过来的数据
+        function handleMessage(evt) {
+            // json数据转换成js对象44
+            var data, type;
+            data = eval("(" + evt.data + ")");
+            type = data.type || '';
+            console.log(data);
+            //用户信息
+            var userid = 'member_1647232';
+            var ajaxUrl = "{:url('Gatewayserver/bind')}";
+            var groupid = '30';
+
+            switch (type) {
+                // Events.php中返回的init类型的消息，将client_id发给后台进行uid绑定
+                case 'init':
+                    // 利用jquery发起ajax请求，将client_id发给后端进行uid绑定
+                    $.post(ajaxUrl, {
+                        uid: userid,
+                        client_id: data.client_id,
+                        groupid: groupid,
+                        type: 'member'
+                    }, function (res) {
+                        console.log(res);
+                    }, 'json');
+                    break;
+                    // 当mvc框架调用GatewayClient发消息时将数据显示出来
+                default:
+                    $('.content').text(data.message);
+            }
+        }
+
+        // 处理后台服务连接关闭事件
+        function handleClose() {
+            console.log("连接已关闭...");
+        }
+
+        // 处理WebSocket错误
+        function handleError() {
+            console.log("WebSocketError!");
+        }
+
+        //连接测试用
+        function testing() {
+            //每隔3秒钟向服务器发送数据，此处仅用于测试
+            var items = ['张三', '李四', '小二黑', '阿杜', '单工', '大理寺', '花荣', '刘备', '诸葛亮'];
+            setInterval(function () {
+                var item = items[Math.floor(Math.random() * items.length)];
+                webSocket.send(item);
+            }, 3000);
+        }
+    </script>
+</body>
+
+</html>

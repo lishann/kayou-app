@@ -1,0 +1,687 @@
+<?php
+
+namespace app\index\controller;
+
+use think\Controller;
+use think\Db;
+use app\index\model\Workorder as ModelWorkorder;
+
+class Workorder extends Controller
+{
+  //工作单查询
+  function query_workorder()
+  {
+    if (request()->isPost()) {
+      try {
+        $work_order_no = input('work_order_no');
+        $work_order_no = explode('-', $work_order_no);
+        $work_order_no = $work_order_no[0];
+        dlog(input(), 'lb_workorder-参数');
+
+        //验证账号
+        $sql = "SELECT * from workorder where work_order_no='{$work_order_no}'";
+        $workorder = Db::query($sql);
+        if ($workorder) {
+          return json([
+            'code' => '00',
+            'msg' => '工作单查询成功',
+            'data' => $workorder[0]
+          ]);
+        } else {
+          return json([
+            'code' => '100',
+            'msg' => '未查到该工作单'
+          ]);
+        }
+      } catch (\Throwable $th) {
+        dlog(Db::getLastSql() . "\n" . $th->getMessage(), '报错信息');
+        return json([
+          'code' => '100',
+          'msg' => '执行失败',
+          'data' => $th->getMessage()
+        ]);
+      }
+    }
+  }
+
+  //工作单列表
+  function lb_workorder()
+  {
+    if (request()->isPost()) {
+      try {
+        dlog(input(), 'lb_workorder-参数');
+        $page = input('param.page');
+        $limit = input('param.limit');
+        $terminals_all = '';
+        //商户号
+        $mcht_no = input('param.mcht_no');
+        //终端号
+        $terminal_no = input('param.terminal_no');
+        if ($mcht_no != '' && $mcht_no != null || $terminal_no != '' && $terminal_no != null) {
+          $where1 = '';
+          if ($mcht_no != '' && $mcht_no != null) {
+            $where1 = "and a2.mcht_no = '{$mcht_no}'";
+          }
+          $where3 = '';
+          if ($terminal_no != '' && $terminal_no != null) {
+            $where3 = "and a2.terminal_no = '{$terminal_no}'";
+          }
+          $terminals_all = "and exists (select 1
+                          from terminals_all a2
+                         where a2.term_no = a.term_no
+                           and a2.opt_flag <> '13'
+                           {$where1}{$where3})";
+        }
+
+        //PSAM卡号
+        $psam_no = input('param.psam_no');
+        $where2 = '';
+        if ($psam_no != '' && $psam_no != null) {
+          $where2 = "and exists (select 1
+                          from term_info a2
+                         where a2.term_no = a.term_no
+                           and a2.psam_no = '{$psam_no}')";
+        }
+        //工作单号
+        $work_order_no = input('param.work_order_no');
+        $where4 = '';
+        if ($work_order_no != '' && $work_order_no != null) {
+          $where4 = "and a.work_order_no = '{$work_order_no}'";
+        }
+        //工作单状态
+        $status = input('param.status');
+        $where5 = '';
+        if ($status != '' && $status != null) {
+          $where5 = "and a.status in ('{$status}')";
+        }
+        //执行人员
+        $work_id = input('param.work_id');
+        $where6 = '';
+        if ($work_id != '' && $work_id != null) {
+          $where6 = "and a.work_id = '{$work_id}'";
+        }
+        //派单日期
+        $sender_date = input('param.sender_date');
+        $date = date('Ymd');
+        $where7 = "and a.sender_date = '{$date}'";
+        if ($sender_date != '' && $sender_date != null) {
+          $where7 = "and a.sender_date = '{$sender_date}'";
+        }
+        //打印标志
+        $print_flag = input('param.print_flag');
+        $where8 = '';
+        if ($print_flag != '' && $print_flag != null) {
+          $where8 = "and a.print_flag = '{$print_flag}'";
+        }
+        //工作单类型
+        $work_flag_name = input('param.work_flag_name');
+        $where9 = '';
+        if ($work_flag_name != '' && $work_flag_name != null) {
+          $where9 = "and a.work_flag_name = '{$work_flag_name}'";
+        }
+        //计划执行日期
+        $plan_date = input('param.plan_date');
+        $where10 = "and a.plan_date = '{$date}'";
+        if ($plan_date != '' && $plan_date != null) {
+          $where10 = "and a.plan_date = '{$plan_date}'";
+        }
+        //片区
+        $big_area_id = input('param.big_area_id');
+        $where11 = '';
+        if ($big_area_id != '' && $big_area_id != null) {
+          $where11 = "and a.big_area_id in ('{$big_area_id}')";
+        }
+        //商户等级
+        $grade = input('param.grade');
+        $where12 = '';
+        if ($grade != '' && $grade != null) {
+          $where12 = "and a.grade = '{$grade}'";
+        }
+        //收单机构
+        $acq_inst_id = input('param.acq_inst_id');
+        $where13 = '';
+        if ($acq_inst_id != '' && $acq_inst_id != null) {
+          $where13 = "and a.acq_inst_id = '{$acq_inst_id}'";
+        }
+        //收单机构2
+        $acq_inst_id2 = input('param.acq_inst_id2');
+        $where14 = '';
+        if ($acq_inst_id2 != '' && $acq_inst_id2 != null) {
+          $where14 = "and a.acq_inst_id2 = '{$acq_inst_id2}'";
+        }
+        //派单人
+        $sender_name = input('param.sender_name');
+        $where15 = '';
+        if ($sender_name != '' && $sender_name != null) {
+          $where15 = "and a.sender_name like '%{$sender_name}%'";
+        }
+
+        //查询当日派单
+        $sql = "SELECT trim(a.work_order_no) work_order_no,a.work_id,a.plan_date,a.sender_date,
+        a.status,
+        a.work_flag,a.mcht_name,a.addr,a.linkman,a.telno,
+        a.plan_train_num,a.work_date,a.sign_date,a.sign_name,a.paper_type,
+        a.device_type,a.print_flag,a.print_flag_name,a.work_name,a.mcht_addr,
+        a.work_flag_name,a.deposit_flag,a.city_name city,
+        a.install_flag,a.note,a.acq_inst_id,
+        a.acq_inst_id2,a.params,a.status_name,
+        a.sender_name,b.big_area_name,a.gzdnr,a.grade,a.term_no,
+        a.para_name
+   from v_workorder_1 a, big_area b
+  where 1 = 1
+    {$where6}{$where10}
+    and a.big_area_id2 = b.big_area_id(+)
+  order by a.status,a.work_flag";
+        // print_r($sql);exit;
+        // {$where2}{$terminals_all}{$where4}{$where5}
+        // {$where8}{$where9}{$where10}
+        //   {$where11}{$where12}{$where13}{$where14}{$where15}
+        // $data = db_query_page($sql, $page, $limit);
+        $data = Db::query($sql);
+        $count = db_query_limit($sql)[0]; //总条数
+        $res = array(
+          'code' => '00',
+          'msg' => '',
+          'count' => $count['total'],
+          'data' => $data,
+        );
+        return json($res);
+      } catch (\Throwable $th) {
+        dlog(Db::getLastSql() . "\n" . $th->getMessage(), '报错信息');
+        return json([
+          'code' => '100',
+          'msg' => '执行失败',
+          'data' => $th->getMessage()
+        ]);
+      }
+    }
+  }
+
+  //工作单详情
+  function details_workorder()
+  {
+    if (request()->isPost()) {
+      try {
+        $work_order_no = input('work_order_no');
+        dlog(input(), 'details_workorder-参数');
+        $sql = "select a.sys_date,trim(a.work_order_no) work_order_no,trim(a.term_no) term_no,a.sender_id,a.mcht_name2,a.status,a.status_name,
+                a.addr,a.linkman,trim(a.telno) telno,a.mobile,a.sales_manager_id,
+                a.work_id,a.city,a.job_num,trim(a.paper_type) paper_type,trim(a.work_flag) work_flag,
+                a.work_name,a.plan_date,a.note,a.addr2,a.deposit,
+                a.mcht_id,c.deposit_no,c.deposit_amount,a.term_type,a.sales_manager_telno,
+                a.expand_manager_id,a.expand_manager_telno,a.acq_inst_id,a.acq_inst_id2,a.acq_inst_name2,
+                a.big_area_name2,a.big_area_name,a.paper_num,a.city_name,a.zjbh,
+                a.jpbh,a.zjbh2,a.jpbh2,a.zjxh,a.jpxh,
+                a.zjxh2,a.jpxh2,a.device_type,a.unionpay_app_open_flag,a.grade,
+                a.visit_note,a.business_scope,a.cert_name,a.mcht_name3,a.install_date,
+                a.term_inves,trim(a.acct_ins_name2) acct_ins_name2,a.acct_ins_name4,a.fjxh,a.fjbh,
+                a.fjxh2,a.fjbh2,a.train_num,
+                a.sign_name,
+                a.install_flag
+        from v_workorder a, virterm_deposit_info_view c
+        where 1 = 1
+            and a.work_order_no = '{$work_order_no}'
+            and a.term_no = c.term_no(+)";
+        $data = Db::query($sql);
+        if ($data) {
+          $data = $data[0];
+        }
+        if ($data['status'] == '2') {
+          $sql = "SELECT filetype as fType,file_name as fName,file_url as fPath from workorder_es where work_order_no = '{$work_order_no}'";
+          $images = Db::query($sql);
+          $data['images'] = $images;
+        }
+        if ($data) {
+          $data = $data;
+          $res = array(
+            'code' => '00',
+            'msg' => '工作单详情查询成功',
+            'data' => $data,
+          );
+        } else {
+          $res = array(
+            'code' => '100',
+            'msg' => '工作单号错误或工作单不存在',
+            'data' => $data,
+          );
+        }
+        return json($res);
+      } catch (\Throwable $th) {
+        dlog(Db::getLastSql() . "\n" . $th->getMessage(), '报错信息');
+        return json([
+          'code' => '100',
+          'msg' => '执行失败',
+          'data' => $th->getMessage()
+        ]);
+      }
+    }
+  }
+
+  //工作单内容修改
+  function edit_workorder()
+  {
+    if (request()->isPost()) {
+      try {
+        $data = input();
+        dlog($data, 'edit_workorder-参数');
+        $work_order_no = $data['work_order_no'];
+        foreach ($data as $k => $v) {
+          $val[] = $k . "='" . $v . "'";
+        }
+        $val = implode(',', $val);
+        $sql = "UPDATE WORKORDER set $val where work_order_no='$work_order_no'";
+        $update = Db::execute($sql);
+        if ($update) {
+          $res = array(
+            'code' => '00',
+            'msg' => '工作单内容修改成功',
+          );
+        } else {
+          $res = array(
+            'code' => '100',
+            'msg' => '工作单内容修改失败',
+            'data' => Db::getLastSql()
+          );
+        }
+        return json($res);
+      } catch (\Throwable $th) {
+        dlog(Db::getLastSql() . "\n" . $th->getMessage(), '报错信息');
+        return json([
+          'code' => '100',
+          'msg' => '执行失败',
+          'data' => $th->getMessage()
+        ]);
+      }
+    }
+  }
+
+  //影印件上传
+  function yyj_upload()
+  {
+    if (request()->isPost()) {
+      Db::startTrans(); //开启事务
+      try {
+        $arr_url = [];
+        $data = input();
+        dlog($data, 'yyj_upload-参数');
+        // print_r($data);exit;
+        $path = config('outwork.yyj_url');
+        $url = '/storage/admintwo/upload/' . $data['work_order_no'] . '/' . date('Ymd') . '/';
+        foreach ($data['images'] as $k => $v) {
+          if ($v['fPath'] == '') {
+            continue; // 跳出本次循环
+          }
+          //查询老图片
+          $sql = "SELECT  * from WORKORDER_ES a
+            WHERE  a.WORK_ORDER_NO = '{$data['work_order_no']}'
+            AND FILETYPE = '{$v['fType']}'";
+          $select = Db::query($sql);
+          if ($select) {
+            $select = $select[0];
+          }
+          //删除老图片数据
+          $sql = "DELETE FROM WORKORDER_ES WHERE  WORK_ORDER_NO = '{$data['work_order_no']}' AND FILETYPE = '{$v['fType']}'";
+          $delete = Db::execute($sql);
+          //上传新图片
+          $base64_url = base64_image_content($v['fPath'], $path, $url);
+          $arr_url[] = $base64_url;
+          if (!$base64_url) {
+            $res = [
+              'code' => '100',
+              'msg' => '图片保存失败'
+            ];
+            return json($res);
+          }
+          $arr = [
+            'work_order_no' => $data['work_order_no'], //工作单号
+            'file_url' => $base64_url, //文件URL
+            'note' => $data['note'], //备注
+            'filetype' => $v['fType'], //文件类型 0-工作单 1-装机工作单 2-维护工作单 3-巡检工作单 4-押金收据收条 5-使用须知 6-门头 7-收银台 8-内景 9-收银员 10-签购单 99-其他
+            'file_name' => $v['fName'], //文件名
+            'create_id' => $data['create_id'], //创建人
+          ];
+          $insert = Db::table('workorder_es')->insert($arr);
+          if ($insert) {
+            if (isset($select['file_url'])) {
+              //删除老图片
+              if (file_exists($path . $select['file_url'])) {
+                unlink($path . $select['file_url']);
+              }
+            }
+          }
+          $arr_url = [];
+        }
+        if ($insert) {
+          $res = [
+            'code' => '00',
+            'msg' => '影印件上传成功',
+            'data' => ''
+          ];
+          Db::commit(); //提交事务
+        } else {
+          $res = [
+            'code' => '00',
+            'msg' => '影印件上传失败',
+            'data' => Db::getLastSql()
+          ];
+        }
+        return json($res);
+      } catch (\Throwable $th) {
+        Db::rollback(); //回滚事务
+        dlog(Db::getLastSql() . "\n" . $th->getMessage(), '报错信息');
+        if ($arr_url) {
+          foreach ($arr_url as $k => $v) {
+            if (file_exists($path . $v)) {
+              unlink($path . $v);
+            }
+          }
+        }
+        return json([
+          'code' => '100',
+          'msg' => '执行失败',
+          'data' => $th->getMessage()
+        ]);
+      }
+    }
+  }
+
+  //无工作单派单
+  function notgzd_upload()
+  {
+    if (request()->isPost()) {
+      Db::startTrans(); //开启事务
+      try {
+        $arr_url = [];
+        $data = input();
+        dlog($data, 'notgzd_upload-参数');
+        $path = config('outwork.yyj_url');
+
+        //查询单号
+        $sql = "select trim(prefix) prefix,trim(to_char(serial,'099999')) serial from work_order_no where type='2'";
+        $gzd = Db::query($sql)[0];
+        $data['work_order_no'] = $gzd['prefix'] . date('ym') . $gzd['serial']; //工作单号
+        //单号+1
+        $di_zeng = $this->serial('XJ', $gzd['serial']);
+
+        $url = 'admintwo/upload/' . $data['work_order_no'] . '/' . date('Ymd') . '/';
+
+        foreach ($data['images'] as $k => $v) {
+          if ($v['fPath'] == '') {
+            continue; // 跳出本次循环
+          }
+          //上传新图片
+          $base64_url = base64_image_content($v['fPath'], $path, $url);
+          $arr_url[] = $base64_url;
+          if (!$base64_url) {
+            $res = [
+              'code' => '100',
+              'msg' => '图片保存失败'
+            ];
+            return json($res);
+          }
+          $arr = [
+            'work_order_no' => $data['work_order_no'], //工作单号
+            'file_url' => $base64_url, //文件URL
+            'note' => $data['note'], //备注
+            'filetype' => $v['fType'], //文件类型 0-工作单 1-装机工作单 2-维护工作单 3-巡检工作单 4-押金收据收条 5-使用须知 6-门头 7-收银台 8-内景 9-收银员 10-签购单 99-其他
+            'file_name' => $v['fName'], //文件名
+            'create_id' => $data['create_id'], //创建人
+            'mchtno' => $data['mchtno'], //商户号
+          ];
+          $insert = Db::table('workorder_es')->insert($arr);
+        }
+        if ($insert) {
+          $res = [
+            'code' => '00',
+            'msg' => '工作单派单成功',
+            'data' => $data['work_order_no']
+          ];
+          Db::commit(); //提交事务
+        } else {
+          $res = [
+            'code' => '100',
+            'msg' => '工作单派单失败'
+          ];
+        }
+        return json($res);
+      } catch (\Throwable $th) {
+        Db::rollback(); //回滚事务
+        dlog(Db::getLastSql() . "\n" . $th->getMessage(), '报错信息');
+        if ($arr_url) {
+          foreach ($arr_url as $k => $v) {
+            if (file_exists($path . $v)) {
+              unlink($path . $v);
+            }
+          }
+        }
+        return json([
+          'code' => '100',
+          'msg' => '执行失败',
+          'data' => $th->getMessage(),
+        ]);
+      }
+    }
+  }
+
+  //无工作单影印件列表
+  function notgzd_lb()
+  {
+    if (request()->isPost()) {
+      try {
+        $data = input();
+        dlog($data, 'notgzd_lb-参数');
+        // $result = validate(V_Workorder::class)->check($data);
+        // if ($result) {
+        //   return '数据验证成功';
+        // } else {
+        //   validate()->getError();
+        // }
+        //验证账号
+        $date = date('Ymd');
+        $sql = "SELECT 
+        trim(WORK_ORDER_NO) WORK_ORDER_NO, --工作单号
+        FILE_URL, --文件URL
+        NOTE, --备注
+        decode(trim(FILETYPE),'0','0-工作单','1','1-装机工作单','2','2-维护工作单','3','3-巡检工作单','4','4-押金收据收条','5','5-使用须知','6','6-门头','7','7-收银台','8','8-内景','9','9-收银员','10','10-签购单','99','99-其他',FILETYPE) FILETYPE, --文件类型 0-工作单 1-装机工作单 2-维护工作单 3-巡检工作单 4-押金收据收条  5-使用须知 6-门头 7-收银台 8-内景 9-收银员 10-签购单 99-其他
+        FILE_NAME, --文件名
+        CREATE_ID, --创建人
+        to_char(to_date(CREATE_DATE,'YYYY-MM-DD HH24:MI:SS'),'YYYY-MM-DD HH24:MI:SS') CREATE_DATE, --创建日期
+        MCHTNO --商户号
+        from WORKORDER_ES where CREATE_ID='{$data['create_id']}'
+        and substr(CREATE_DATE,1,8) = '{$date}'
+        and mchtno is not null";
+        $workorder_es = Db::query($sql);
+        if ($workorder_es) {
+          foreach ($workorder_es as $k => $v) {
+            $mchtno_arr[] = $v['mchtno'];
+          }
+          $mchtno_arr = array_unique($mchtno_arr);
+          foreach ($mchtno_arr as $k => $v) {
+            foreach ($workorder_es as $kk => $vv) {
+              if ($v == $vv['mchtno']) {
+                $arr[$v][] = $vv;
+              }
+            }
+          }
+          $img_arr = [];
+          foreach ($arr as $k => $v) {
+            foreach ($v as $kk => $vv) {
+              $img_arr[] = [
+                'fPath' => $vv['file_url'],
+                'fName' => $vv['file_name'],
+                'fType' => $vv['filetype'],
+              ];
+            }
+            $new_arr[] = [
+              'work_order_no' => $vv['work_order_no'],
+              'note' => $vv['note'],
+              'create_id' => $vv['create_id'],
+              'create_date' => $vv['create_date'],
+              'mchtno' => $vv['mchtno'],
+              'images' => $img_arr
+            ];
+            $img_arr = [];
+          }
+          // print_r($new_arr);exit;
+          return json([
+            'code' => '00',
+            'msg' => '影印件列表查询成功',
+            'data' => $new_arr
+          ]);
+        } else {
+          return json([
+            'code' => '100',
+            'msg' => '未查到影印件'
+          ]);
+        }
+      } catch (\Throwable $th) {
+        dlog(Db::getLastSql() . "\n" . $th->getMessage(), '报错信息');
+        return json([
+          'code' => '100',
+          'msg' => '执行失败',
+          'data' => $th->getMessage()
+        ]);
+      }
+    }
+  }
+
+  //回执单签收
+  function receipt_sign()
+  {
+    if (request()->isPost()) {
+      Db::startTrans(); //开启事务
+      try {
+        $arr_url = [];
+        $data = input();
+        dlog($data, 'notgzd_upload-参数');
+        $model = new ModelWorkorder();
+        $yanzheng = $model->yanzheng($data);
+        if ($yanzheng['code'] == '0') {
+          return json($yanzheng);
+        }
+        $path = config('outwork.yyj_url');
+
+        $url = 'admintwo/upload/' . $data['work_order_no'] . '/' . date('Ymd') . '/';
+        $n = 0;
+        foreach ($data['images'] as $k => $v) {
+          if ($v['fPath']) {
+            $n++;
+          }
+        }
+        if ($n == '0') {
+          $res = [
+            'code' => '100',
+            'msg' => '必须上传影印件'
+          ];
+          return json($res);
+        }
+        foreach ($data['images'] as $k => $v) {
+          if ($v['fPath'] == '') {
+            continue; // 跳出本次循环
+          }
+          //上传新图片
+          $base64_url = base64_image_content($v['fPath'], $path, $url);
+          $arr_url[] = $base64_url;
+          if (!$base64_url) {
+            $res = [
+              'code' => '100',
+              'msg' => '图片保存失败'
+            ];
+            return json($res);
+          }
+          $arr = [
+            'work_order_no' => $data['work_order_no'], //工作单号
+            'file_url' => $base64_url, //文件URL
+            'note' => $data['note'], //备注
+            'filetype' => $v['fType'], //文件类型 0-工作单 1-装机工作单 2-维护工作单 3-巡检工作单 4-押金收据收条 5-使用须知 6-门头 7-收银台 8-内景 9-收银员 10-签购单 99-其他
+            'file_name' => $v['fName'], //文件名
+            'create_id' => $data['create_id'], //创建人
+          ];
+          $insert = Db::table('workorder_es')->insert($arr);
+        }
+        unset($data['images']);
+        $sign_id = $data['create_id']; //签收人
+        $mform = $data['mForm'];
+        unset($data['create_id']);
+        unset($data['mForm']);
+        $workorder = $data;
+        $workorder['sign_id'] = $sign_id;
+        $workorder['status'] = '2';
+        $workorder['linkman3'] = $mform['linkman3'];
+        $workorder['mcht_addr2'] = $mform['mcht_addr2'];
+        $workorder['telno3'] = $mform['telno3'];
+        $workorder['sign_date'] = str_replace('-', '', $workorder['sign_date']);
+        foreach ($workorder as $k => $v) {
+          if ($v) {
+            $value[] = $k . "='" . $v . "'";
+          }
+        }
+        $value = implode(',', $value);
+        $sql = "UPDATE WORKORDER set $value where work_order_no = '{$data['work_order_no']}'";
+        $update = Db::execute($sql);
+        if ($insert && $update) {
+          $res = [
+            'code' => '00',
+            'msg' => '回执单签收成功',
+            'data' => $data['work_order_no']
+          ];
+          Db::commit(); //提交事务
+        } else {
+          $res = [
+            'code' => '100',
+            'msg' => '回执单签收失败'
+          ];
+        }
+        return json($res);
+      } catch (\Throwable $th) {
+        Db::rollback(); //回滚事务
+        dlog(Db::getLastSql() . "\n" . $th->getMessage(), '报错信息');
+        if ($arr_url) {
+          foreach ($arr_url as $k => $v) {
+            if (file_exists($path . $v)) {
+              unlink($path . $v);
+            }
+          }
+        }
+        return json([
+          'code' => '100',
+          'msg' => '回执单签收执行失败',
+          'data' => $th->getMessage(),
+        ]);
+      }
+    }
+  }
+
+  //work_order_no表serial字段值+1
+  private function serial($prefix, $serial)
+  {
+    if ($serial == '999999') {
+      $res = Db::execute("update work_order_no set serial='1' where prefix='{$prefix}'");
+    } else {
+      $res = Db::execute("update work_order_no set serial=serial+1 where prefix='{$prefix}'");
+    }
+    return $res;
+  }
+
+  function test()
+  {
+    $path = config('outwork.yyj_url');
+    $url = 'admintwo/upload/' . date('Ymd') . '/';
+    //上传新图片
+    print_r($url);
+  }
+
+  function test2()
+  {
+    $variable = [1, 2, 3, 4, 5];
+    foreach ($variable as $key => $value) {
+      if ($value == 3) {
+        continue;
+      }
+      echo $value;
+      echo "<br>";
+    }
+    exit;
+    echo '这里不输出';
+  }
+}
